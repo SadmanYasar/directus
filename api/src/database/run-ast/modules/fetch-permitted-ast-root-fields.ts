@@ -3,6 +3,7 @@ import type { Knex } from 'knex';
 import { cloneDeep } from 'lodash-es';
 import { fetchPermissions } from '../../../permissions/lib/fetch-permissions.js';
 import { fetchPolicies } from '../../../permissions/lib/fetch-policies.js';
+import { mergePermissions } from '../../../permissions/utils/merge-permissions.js';
 import type { AST } from '../../../types/ast.js';
 import { getDBQuery } from '../lib/get-db-query.js';
 import { parseCurrentLevel } from '../lib/parse-current-level.js';
@@ -33,7 +34,9 @@ export async function fetchPermittedAstRootFields(
 
 	if (accountability && !accountability.admin) {
 		const policies = await fetchPolicies(accountability, { schema, knex });
-		permissions = await fetchPermissions({ action, accountability, policies }, { schema, knex });
+		const rawPermissions = await fetchPermissions({ action, accountability, policies }, { schema, knex });
+		// Merge permissions with 'or' strategy so that multiple policies combine their fields
+		permissions = mergePermissions('or', rawPermissions);
 	}
 
 	return getDBQuery(

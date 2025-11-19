@@ -5,6 +5,7 @@ import getDatabase from '../database/index.js';
 import applyQuery from '../database/run-ast/lib/apply-query/index.js';
 import { fetchPermissions } from '../permissions/lib/fetch-permissions.js';
 import { fetchPolicies } from '../permissions/lib/fetch-policies.js';
+import { mergePermissions } from '../permissions/utils/merge-permissions.js';
 import { getCases } from '../permissions/modules/process-ast/lib/get-cases.js';
 import { validateAccess } from '../permissions/modules/validate-access/validate-access.js';
 
@@ -59,7 +60,13 @@ export class MetaService {
 
 			const policies = await fetchPolicies(this.accountability, context);
 
-			permissions = await fetchPermissions({ action: 'read', accountability: this.accountability, policies }, context);
+			const rawPermissions = await fetchPermissions(
+				{ action: 'read', accountability: this.accountability, policies },
+				context,
+			);
+
+			// Merge permissions with 'or' strategy so that multiple policies combine their fields
+			permissions = mergePermissions('or', rawPermissions);
 		}
 
 		const { cases } = getCases(collection, permissions, []);

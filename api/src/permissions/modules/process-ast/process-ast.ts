@@ -3,6 +3,7 @@ import type { AST } from '../../../types/ast.js';
 import { fetchPermissions } from '../../lib/fetch-permissions.js';
 import { fetchPolicies } from '../../lib/fetch-policies.js';
 import type { Context } from '../../types.js';
+import { mergePermissions } from '../../utils/merge-permissions.js';
 import { fieldMapFromAst } from './lib/field-map-from-ast.js';
 import { injectCases } from './lib/inject-cases.js';
 import type { FieldMap } from './types.js';
@@ -51,17 +52,21 @@ export async function processAst(options: ProcessAstOptions, context: Context) {
 		validatePathExistence(path, collection, fields, context.schema);
 	}
 
-	// Validate permissions for the fields
+	// Validate permissions for the fields (using raw unmerged permissions for validation)
 	for (const [path, { collection, fields }] of fieldMap.other.entries()) {
 		validatePathPermissions(path, permissions, collection, fields);
 	}
 
-	// Validate permission for read only fields
+	// Validate permission for read only fields (using raw unmerged permissions for validation)
 	for (const [path, { collection, fields }] of fieldMap.read.entries()) {
 		validatePathPermissions(path, readPermissions, collection, fields);
 	}
 
-	injectCases(options.ast, permissions);
+	// Merge permissions with 'or' strategy so that multiple policies combine their fields
+	// according to the documented behavior: users get access if ANY policy grants it
+	const mergedPermissions = mergePermissions('or', permissions);
+
+	injectCases(options.ast, mergedPermissions);
 
 	return options.ast;
 }

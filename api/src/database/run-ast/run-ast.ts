@@ -3,6 +3,7 @@ import type { Accountability, Filter, Item, Permission, Query, SchemaOverview } 
 import { cloneDeep, merge } from 'lodash-es';
 import { fetchPermissions } from '../../permissions/lib/fetch-permissions.js';
 import { fetchPolicies } from '../../permissions/lib/fetch-policies.js';
+import { mergePermissions } from '../../permissions/utils/merge-permissions.js';
 import { PayloadService } from '../../services/payload.js';
 import type { AST, FieldNode, FunctionFieldNode, NestedCollectionNode, O2MNode } from '../../types/ast.js';
 import getDatabase from '../index.js';
@@ -67,7 +68,9 @@ export async function runAst(
 
 		if (accountability && !accountability.admin) {
 			const policies = await fetchPolicies(accountability, { schema, knex });
-			permissions = await fetchPermissions({ action: 'read', accountability, policies }, { schema, knex });
+			const rawPermissions = await fetchPermissions({ action: 'read', accountability, policies }, { schema, knex });
+			// Merge permissions with 'or' strategy so that multiple policies combine their fields
+			permissions = mergePermissions('or', rawPermissions);
 		}
 
 		// The actual knex query builder instance. This is a promise that resolves with the raw items from the db
