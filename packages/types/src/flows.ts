@@ -9,6 +9,7 @@ export interface Flow {
 	description: string | null;
 	status: Status;
 	trigger: TriggerType | null;
+	transactional: boolean;
 	options: Record<string, any>;
 	operation: Operation | null;
 	accountability: 'all' | 'activity' | null;
@@ -34,6 +35,7 @@ export interface FlowRaw {
 	description: string | null;
 	status: Status;
 	trigger: TriggerType | null;
+	transactional: boolean;
 	options: Record<string, any> | null;
 	operation: string | null;
 	operations: OperationRaw[];

@@ -383,6 +383,11 @@ class FlowManager {
 		const database = (context['database'] as Knex) ?? getDatabase();
 		const schema = (context['schema'] as SchemaOverview) ?? (await getSchema({ database }));
 
+		// Fork: Transactional flow support — wrap all operations in a single DB transaction
+		if (flow.transactional) {
+			return this.executeTransactionalFlow(flow, data, context, database, schema);
+		}
+
 		const keyedData: Record<string, unknown> = {
 			[TRIGGER_KEY]: data,
 			[LAST_KEY]: data,
@@ -472,6 +477,154 @@ class FlowManager {
 
 		if (flow.trigger === 'event' && flow.options['type'] === 'filter' && lastOperationStatus === 'reject') {
 			throw keyedData[LAST_KEY];
+		}
+
+		if (flow.options['return'] === '$all') {
+			return keyedData;
+		} else if (flow.options['return']) {
+			return get(keyedData, flow.options['return']);
+		}
+
+		return undefined;
+	}
+
+	/**
+	 * Fork: Execute a flow within a Knex transaction.
+	 * All operations receive the transaction object as their database context,
+	 * so any DB writes are automatically part of the transaction.
+	 * If any operation rejects, the entire transaction is rolled back.
+	 * Activity/revision logging happens outside the transaction for visibility.
+	 */
+	private async executeTransactionalFlow(
+		flow: Flow,
+		data: unknown,
+		context: Record<string, unknown>,
+		database: Knex,
+		schema: SchemaOverview,
+	): Promise<unknown> {
+		const logger = useLogger();
+
+		const keyedData: Record<string, unknown> = {
+			[TRIGGER_KEY]: data,
+			[LAST_KEY]: data,
+			[ACCOUNTABILITY_KEY]: context?.['accountability'] ?? null,
+			[ENV_KEY]: this.envs,
+		};
+
+		const steps: {
+			operation: string;
+			key: string;
+			status: 'resolve' | 'reject' | 'unknown';
+			options: Record<string, any> | null;
+		}[] = [];
+
+		let lastOperationStatus: 'resolve' | 'reject' | 'unknown' = 'unknown';
+		let rollbackError: unknown = null;
+
+		try {
+			await database.transaction(async (trx) => {
+				// Create a transactional context — operations will use trx instead of database
+				const trxContext: Record<string, unknown> = {
+					...context,
+					database: trx,
+					flow: context['flow'] ?? flow,
+				};
+
+				let nextOperation = flow.operation;
+
+				while (nextOperation !== null) {
+					const { successor, data: opData, status, options } = await this.executeOperation(
+						nextOperation,
+						keyedData,
+						trxContext,
+					);
+
+					keyedData[nextOperation.key] = opData;
+					keyedData[LAST_KEY] = opData;
+					lastOperationStatus = status;
+					steps.push({ operation: nextOperation.id, key: nextOperation.key, status, options });
+
+					if (status === 'reject') {
+						// In transactional mode, any rejection triggers a full rollback
+						rollbackError = opData;
+						throw new Error('__transactional_flow_rollback__');
+					}
+
+					nextOperation = successor;
+				}
+			});
+		} catch (error: any) {
+			if (error?.message === '__transactional_flow_rollback__') {
+				logger.info(`Transactional flow "${flow.name ?? flow.id}" rolled back due to operation rejection`);
+			} else {
+				// Unexpected error — still results in rollback
+				logger.error(`Transactional flow "${flow.name ?? flow.id}" failed with unexpected error`);
+				rollbackError = error;
+				lastOperationStatus = 'reject';
+			}
+		}
+
+		// Activity/revision logging happens outside the transaction (always recorded)
+		if (flow.accountability !== null) {
+			const activityService = new ActivityService({
+				knex: database,
+				schema: schema,
+			});
+
+			const accountability = context?.['accountability'] as Accountability | undefined;
+
+			const activity = await activityService.createOne({
+				action: Action.RUN,
+				user: accountability?.user ?? null,
+				collection: 'directus_flows',
+				ip: accountability?.ip ?? null,
+				user_agent: accountability?.userAgent ?? null,
+				origin: accountability?.origin ?? null,
+				item: flow.id,
+			});
+
+			if (flow.accountability === 'all') {
+				const revisionsService = new RevisionsService({
+					knex: database,
+					schema: schema,
+				});
+
+				await revisionsService.createOne({
+					activity: activity,
+					collection: 'directus_flows',
+					item: flow.id,
+					data: {
+						steps: steps.map((step) => redactObject(step, { values: this.envs }, getRedactedString)),
+						data: redactObject(
+							keyedData,
+							{
+								keys: [
+									['**', 'headers', 'authorization'],
+									['**', 'headers', 'cookie'],
+									['**', 'query', 'access_token'],
+									['**', 'payload', 'password'],
+								],
+								values: this.envs,
+							},
+							getRedactedString,
+						),
+					},
+				});
+			}
+		}
+
+		// If the transaction was rolled back, propagate the error
+		if (lastOperationStatus === 'reject' && rollbackError !== null) {
+			if (
+				(flow.trigger === 'manual' || flow.trigger === 'webhook') &&
+				flow.options['async'] !== true
+			) {
+				throw rollbackError;
+			}
+
+			if (flow.trigger === 'event' && flow.options['type'] === 'filter') {
+				throw rollbackError;
+			}
 		}
 
 		if (flow.options['return'] === '$all') {

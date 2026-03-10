@@ -11,6 +11,9 @@ fields:
   - field: status
   - field: trigger
   - field: accountability
+  - field: transactional
+    special:
+      - cast-boolean
   - field: options
     special:
       - cast-json

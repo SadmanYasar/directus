@@ -3,6 +3,7 @@ import type { TriggerType } from '@directus/types';
 import { computed, reactive, ref, watch } from 'vue';
 import { getTriggers } from './triggers';
 import api from '@/api';
+import VCheckbox from '@/components/v-checkbox.vue';
 import VDivider from '@/components/v-divider.vue';
 import VDrawer from '@/components/v-drawer.vue';
 import VFancySelect from '@/components/v-fancy-select.vue';
@@ -27,6 +28,7 @@ interface Values {
 	description: string | null;
 	status: string;
 	accountability: string | null;
+	transactional: boolean;
 	trigger?: TriggerType | null;
 	options: Record<string, any>;
 }
@@ -55,6 +57,7 @@ const values: Values = reactive({
 	description: null,
 	status: 'active',
 	accountability: 'all',
+	transactional: false,
 	trigger: undefined,
 	options: {},
 });
@@ -71,6 +74,7 @@ watch(
 			values.description = null;
 			values.status = 'active';
 			values.accountability = 'all';
+			values.transactional = false;
 			values.trigger = undefined;
 			values.options = {};
 		} else {
@@ -82,6 +86,7 @@ watch(
 			values.description = existing.description;
 			values.status = existing.status;
 			values.accountability = existing.accountability;
+			values.transactional = existing.transactional ?? false;
 			values.trigger = existing.trigger;
 			values.options = existing.options ?? {};
 		}
@@ -253,6 +258,13 @@ function onApply() {
 									value: null,
 								},
 							]"
+						/>
+					</div>
+					<div class="field full">
+						<VCheckbox
+							v-model="values.transactional"
+							block
+							:label="$t('flow_transactional')"
 						/>
 					</div>
 				</div>
