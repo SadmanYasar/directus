@@ -63,6 +63,7 @@ import { getExtensionManager } from './extensions/index.js';
 import { getFlowManager } from './flows.js';
 import { createExpressLogger, useLogger } from './logger/index.js';
 import authenticate from './middleware/authenticate.js';
+import botProtection from './middleware/bot-protection.js';
 import cache from './middleware/cache.js';
 import cors from './middleware/cors.js';
 import { errorHandler } from './middleware/error-handler.js';
@@ -293,6 +294,8 @@ export default async function createApp(): Promise<express.Application> {
 	app.use(authenticate);
 
 	app.use(schema);
+
+	app.use(botProtection);
 
 	app.use(sanitizeQuery);
 

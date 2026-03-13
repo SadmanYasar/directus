@@ -60,6 +60,11 @@ export const TYPE_MAP: Record<string, EnvType> = {
 	'AUTH_.+_USER_DN': 'string',
 	'AUTH_.+_GROUP_DN': 'string',
 	'AUTH_.+_BIND_PASSWORD': 'string',
+
+	BOT_PROTECTION_ENABLED: 'boolean',
+	BOT_PROTECTION_BYPASS_ADMIN: 'boolean',
+	BOT_PROTECTION_ROUTES: 'array',
+	BOT_PROTECTION_BYPASS_ROLES: 'array',
 } as const;
 
 export const TYPE_MAP_REGEX: [RegExp, EnvType][] = Object.entries(TYPE_MAP).map(([name, value]) => [

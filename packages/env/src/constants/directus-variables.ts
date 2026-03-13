@@ -268,6 +268,9 @@ export const DIRECTUS_VARIABLES = [
 
 	// ai
 	'AI_ENABLED',
+
+	// bot protection
+	'BOT_PROTECTION_.+',
 ] as const;
 
 /**
